@@ -1,8 +1,6 @@
-本项目基于 [PCAT_open_source](https://github.com/halostorm/PCAT_open_source)项目增加了图像显示功能
+## what is new?
+- 本项目基于 [point_cloud_ros_annotation_tool](https://github.com/Qjizhi/point_cloud_ros_annotation_tool)项目增加了从标注点云bbox的txt文件读入marker并调整的功能
 ---------------------
-
-[视频教程(上)](https://v.youku.com/v_show/id_XMzc0MzM5NTkzNg==.html?spm=a2hbt.13141534.app.5~5!2~5!2~5~5~5!2~5~5!2~5!2~5!2~5~5!2~A )  
-[视频教程(下)](https://v.youku.com/v_show/id_XMzgwNTk3MzY0OA==.html?spm=a2hbt.13141534.app.5~5!2~5!2~5~5~5!2~5~5!2~5!2~5!2~5~5~A)
 
 
 ## **I. 配置使用环境及安装**
