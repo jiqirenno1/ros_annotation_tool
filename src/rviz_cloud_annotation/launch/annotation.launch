@@ -23,6 +23,6 @@
     <param name="show_zero_weight_control_points" type="bool" value="false" />
   </node>
 
-  <node pkg="rviz" type="rviz" name="annotation_rviz" output="screen" args="-d $(find rviz_cloud_annotation)/rviz/annotation.rviz" required="true" />
+  <node pkg="rviz" type="rviz" name="annotation_rviz" output="screen" args="-d $(find rviz_cloud_annotation)/rviz/a1.rviz" required="true" />
 
 </launch>

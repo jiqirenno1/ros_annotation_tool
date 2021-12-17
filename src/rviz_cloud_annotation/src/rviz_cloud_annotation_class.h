@@ -3,6 +3,7 @@
 
 #include <rviz_cloud_annotation/RectangleSelectionViewport.h>
 #include <rviz_cloud_annotation/UndoRedoState.h>
+#include <visualization_msgs/MarkerArray.h>
 #include "point_cloud_plane_curves_extract.h"
 #include "point_neighborhood.h"
 #include "point_neighborhood_search.h"
@@ -58,6 +59,7 @@
 // boost
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/lexical_cast.hpp>
+#include "tf/transform_datatypes.h"
 
 #define KEYDOWN(vk_code) ((GetAsyncKeyState(vk_code) & 0x8000) ? 1 : 0)
 #define KEYUP(vk_code) ((GetAsyncKeyState(vk_code) & 0x8000) ? 0 : 1)
@@ -471,8 +473,12 @@ private:
 
   ros::Publisher bbox_marker_pub;
   ros::Publisher bbox_head_marker_pub;
+  ros::Publisher bbox_id_marker_pub;
 
-  ros::Publisher kerb_marker_pub;
+  ros::Publisher bbox_marker_array_pub;
+  ros::Publisher bbox_head_marker_array_pub;
+
+    ros::Publisher kerb_marker_pub;
 
   ros::Publisher plane_marker_pub;
 
@@ -487,6 +493,7 @@ private:
 
   uint ANNOTATION_TYPE = BBOX;
 
+  int BBOX_ID_HIS = 0;
   int BBOX_ID = 0;
 
   int KERB_ID = 0;
@@ -496,6 +503,7 @@ private:
   int PLANE_ID = 0;
 
   float m_box_bias[BBOXNUMBER_LINEPOINTNUMBER][6] = {{0}};
+  float m_box_bias_last[BBOXNUMBER_LINEPOINTNUMBER][6] = {{0}};
 
   float BBOX_YAW = 0;
 
@@ -504,6 +512,7 @@ private:
   float KERB_YAW = 0;
 
   bool if_tilt = false;
+
 
   Uint64Vector m_points_to_abandon;
 
@@ -589,6 +598,8 @@ public:
 
   void generateKerb(const PointXYZRGBNormalCloud &cloud);
 
+  void generateBboxFromTxt();
+  void generateBboxFromTxtInit();
   void generateBbox(const PointXYZRGBNormalCloud &cloud, bool if_tilt);
 
   void onNextObject(const std_msgs::Empty &)

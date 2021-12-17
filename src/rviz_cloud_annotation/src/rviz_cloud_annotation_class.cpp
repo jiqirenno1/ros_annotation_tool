@@ -210,6 +210,7 @@ void RVizCloudAnnotation::InitNewCloud(ros::NodeHandle &nh)
       if (j < 6)
       {
         m_box_bias[i][j] = 0;
+        m_box_bias_last[i][j] = 0;
       }
       BBOX_SET[i][j] = 0;
       if (j < 10)
@@ -431,8 +432,49 @@ void RVizCloudAnnotation::InitNewCloud(ros::NodeHandle &nh)
   m_set_name_sub = m_nh.subscribe(param_string, 1, &RVizCloudAnnotation::onSetName, this);
 
   bbox_marker_pub = m_nh.advertise<visualization_msgs::Marker>("bbox_marker", 1, true);
+  bbox_marker_array_pub = m_nh.advertise<visualization_msgs::MarkerArray>("bbox_marker_array", 1, true);
 
   bbox_head_marker_pub = m_nh.advertise<visualization_msgs::Marker>("bbox_head_marker", 1, true);
+  bbox_head_marker_array_pub = m_nh.advertise<visualization_msgs::MarkerArray>("bbox_head_marker_array", 1, true);
+
+  bbox_id_marker_pub = m_nh.advertise<visualization_msgs::Marker>("bbox_id_marker", 1, true);
+
+  //send bbox txt
+  std::string bbox_file = m_bbox_files[FILE_ID];
+  std::cout<<"*****************current bbox file is: "<<bbox_file<<std::endl;
+
+  std::ifstream ifile;
+  ifile.open(bbox_file.c_str());
+  std::string s;
+  bool flag = false;
+  while (std::getline(ifile, s)&&!s.empty())
+  {
+      flag = true;
+      //read bbox txt
+      std::stringstream line(s);
+      std::string label;
+      line>>label>>BBOX_LABEL_SET[BBOX_ID][1]>>BBOX_LABEL_SET[BBOX_ID][2]>>BBOX_LABEL_SET[BBOX_ID][3]>>BBOX_LABEL_SET[BBOX_ID][4]>>
+      BBOX_LABEL_SET[BBOX_ID][5]>>BBOX_LABEL_SET[BBOX_ID][6]>>BBOX_LABEL_SET[BBOX_ID][7]>>
+      BBOX_LABEL_SET[BBOX_ID][8]>>BBOX_LABEL_SET[BBOX_ID][9];
+      BBOX_SET[BBOX_ID][10] = 1000;
+      //generate markers
+      generateBboxFromTxtInit();
+      sleep(0.1);
+
+
+      BBOX_ID++;
+  }
+  if(flag)
+      BBOX_ID--;
+  BBOX_ID_HIS = BBOX_ID;
+
+
+  std::cout<<"bbox txt has nums is: "<<BBOX_ID_HIS<<std::endl;
+
+
+
+
+
 
   lane_marker_pub = m_nh.advertise<visualization_msgs::Marker>("lane_marker", 1, true);
 
@@ -540,30 +582,28 @@ void RVizCloudAnnotation::InitNewCloud(ros::NodeHandle &nh)
   SendBiasZero();
   if (!m_image_files.empty())
   {
-    ros::Rate loop_rate(10);
-    while (ros::ok())
-    {
-
       std::string image_file = m_image_files[FILE_ID];
       cv::Mat image = cv::imread(image_file.c_str(), CV_LOAD_IMAGE_COLOR);
-      if (image.empty())
+      ros::Rate loop_rate(10);
+      if(image.empty())
       {
-        std::cout << "open image error" << std::endl;
+          std::cout<<"no image!"<<std::endl;
       }
-      // else
-      // {
-      //   std::cout << "open image ok" << std::endl;
-      // }
-      sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg();
-      // if(msg)
-      // {std::cout<<"sent msg$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$"<<std::endl;}
+      else{
+          while (ros::ok())
+          {
+              sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg();
+              // if(msg)
+              // {std::cout<<"sent msg$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$"<<std::endl;}
 
-      m_image_label_pub.publish(msg);
-      ros::spinOnce();
-      loop_rate.sleep();
-    }
+              m_image_label_pub.publish(msg);
+              ros::spinOnce();
+              loop_rate.sleep();
+          }
+
+      }
   }
-  // Restore(m_annotation_filename_in); //恢复标记
+//  Restore(m_annotation_filename_in); //恢复标记
   m_autosave_timer.start();
 }
 
@@ -1001,9 +1041,14 @@ void RVizCloudAnnotation::Save(const bool is_autosave)
 
     std::ofstream ofile2;
     ofile2.open(save_bbox_name.c_str(), std::ios::trunc);
+//    ofile2.open(save_bbox_name.c_str(), std::ios::app);
 
     ROS_INFO("rviz_cloud_annotation: bbox name: %s", save_bbox_name.c_str());
-    for (int i = 0; i <= BBOX_ID; i++)
+
+    int num = BBOX_ID_HIS;
+    if(BBOX_ID>num)
+        num = BBOX_ID;
+    for (int i = 0; i <= num; i++)
     {
       if (BBOX_SET[i][10] > 1)
       {
@@ -1721,7 +1766,7 @@ void RVizCloudAnnotation::onControlPointWeightChange(const std_msgs::Int32 &msg)
 void RVizCloudAnnotation::onControlBiasChange(const std_msgs::Float32MultiArray &msg)
 {
   FloatVector bias = msg.data;
-  // ROS_INFO("rviz_cloud_annotation: bias: %f %f %f %f %f %f ", bias[0], bias[1], bias[2], bias[3], bias[4], bias[5]);
+  ROS_INFO("rviz_cloud_annotation: bias: %f %f %f %f %f %f ", bias[0], bias[1], bias[2], bias[3], bias[4], bias[5]);
   // ROS_INFO("rviz_cloud_annotation: ANNOTATION_TYPE %u", ANNOTATION_TYPE);
   if (ANNOTATION_TYPE == BBOX)
   {
@@ -1731,7 +1776,17 @@ void RVizCloudAnnotation::onControlBiasChange(const std_msgs::Float32MultiArray 
     m_box_bias[BBOX_ID][3] = bias[3];
     m_box_bias[BBOX_ID][4] = bias[4];
     m_box_bias[BBOX_ID][5] = bias[5];
-    generateBbox(*m_cloud, if_tilt);
+    if(BBOX_ID<=BBOX_ID_HIS)
+    {
+        BBOX_YAW_ANGLE = BBOX_LABEL_SET[BBOX_ID][9];
+        generateBboxFromTxt();
+
+    }
+    else
+    {
+        generateBbox(*m_cloud, if_tilt);
+    }
+
   }
 }
 
@@ -1747,6 +1802,7 @@ void RVizCloudAnnotation::onControlOccludedChange(const std_msgs::Int32 &msg)
 void RVizCloudAnnotation::onControlYawChange(const std_msgs::Int32 &msg)
 {
   const int32 new_yaw = msg.data;
+  ROS_INFO("rviz_cloud_annotation: set yaw to %i", (signed int)(new_yaw));
   if (new_yaw > m_control_yaw_max)
   {
     ROS_ERROR("rviz_cloud_annotation: could not set yaw to %i, maximum is %i", (signed int)(new_yaw),
@@ -1767,7 +1823,15 @@ void RVizCloudAnnotation::onControlYawChange(const std_msgs::Int32 &msg)
   }
   if (ANNOTATION_TYPE == BBOX)
   {
-    generateBbox(*m_cloud, if_tilt);
+      if(BBOX_ID<=BBOX_ID_HIS)
+      {
+          generateBboxFromTxt();
+
+      }
+      else
+      {
+          generateBbox(*m_cloud, if_tilt);
+      }
   }
 }
 
@@ -2348,6 +2412,295 @@ void RVizCloudAnnotation::generateLane(const PointXYZRGBNormalCloud &cloud)
 
   lane_marker_pub.publish(marker);
 }
+void RVizCloudAnnotation::generateBboxFromTxtInit() {
+    //generate markers
+    const pcl::RGB color = pcl::GlasbeyLUT::at((BBOX_ID) % 256);
+    Marker marker;
+
+    marker.header.frame_id = m_frame_id;
+
+    marker.id = BBOX_ID;
+
+    marker.type = visualization_msgs::Marker::CUBE;
+
+    marker.color.r = float(color.r) / 255.0;
+    marker.color.g = float(color.g) / 255.0;
+    marker.color.b = float(color.b) / 255.0;
+    marker.color.a = 0.5;
+
+    Marker markerHead;
+    markerHead.header.frame_id = m_frame_id;
+    markerHead.id = BBOX_ID;
+    markerHead.type = visualization_msgs::Marker::CUBE;
+
+    markerHead.color.r = float(color.r) / 255.0;
+    markerHead.color.g = float(color.g) / 255.0;
+    markerHead.color.b = float(color.b) / 255.0;
+    markerHead.color.a = 1;
+
+    markerHead.scale.x = 1;
+    markerHead.scale.y = 0.1;
+    markerHead.scale.z = 0.1;
+
+    if (1)
+    {
+        marker.pose.position.x = BBOX_LABEL_SET[BBOX_ID][5];
+        marker.pose.position.y = BBOX_LABEL_SET[BBOX_ID][6];
+        marker.pose.position.z = BBOX_LABEL_SET[BBOX_ID][7];
+
+        marker.pose.orientation.x = 0.0;
+        marker.pose.orientation.y = 0.0;
+        marker.pose.orientation.z = 0.0;
+        marker.pose.orientation.w = 1.0;
+
+
+        marker.scale.x = BBOX_LABEL_SET[BBOX_ID][2];
+        marker.scale.y = BBOX_LABEL_SET[BBOX_ID][3];
+        marker.scale.z = BBOX_LABEL_SET[BBOX_ID][4];
+
+        if (BBOX_LABEL_SET[BBOX_ID][9] == 0)
+        {
+            markerHead.pose.position.x = marker.pose.position.x + (0.5 * marker.scale.x + 0.5);
+            markerHead.pose.position.y = marker.pose.position.y;
+        }
+        else if (BBOX_LABEL_SET[BBOX_ID][9] == 90)
+        {
+            markerHead.pose.position.x = marker.pose.position.x;
+            markerHead.pose.position.y = marker.pose.position.y + (0.5 * marker.scale.y + 0.5);
+            markerHead.scale.x = 0.1;
+            markerHead.scale.y = 1;
+        }
+        else if (BBOX_LABEL_SET[BBOX_ID][9] == -90)
+        {
+            markerHead.pose.position.x = marker.pose.position.x;
+            markerHead.pose.position.y = marker.pose.position.y - (0.5 * marker.scale.y + 0.5);
+            markerHead.scale.x = 0.1;
+            markerHead.scale.y = 1;
+        }
+        else if (BBOX_LABEL_SET[BBOX_ID][9] == 180 || BBOX_LABEL_SET[BBOX_ID][9] == -180)
+        {
+            markerHead.pose.position.x = marker.pose.position.x - (0.5 * marker.scale.x + 0.5);
+            markerHead.pose.position.y = marker.pose.position.y;
+        }
+        else
+        {
+            marker.pose.orientation.x = 0.0;
+            marker.pose.orientation.y = 0.0;
+            marker.pose.orientation.z = sin(BBOX_LABEL_SET[BBOX_ID][9]/ 180.0 * _M_PI * 0.5);
+            marker.pose.orientation.w = cos(BBOX_LABEL_SET[BBOX_ID][9]/ 180.0 * _M_PI* 0.5);
+
+            float sinyaw = sinf(BBOX_LABEL_SET[BBOX_ID][9]/ 180.0 * _M_PI);
+            float cosyaw = cosf(BBOX_LABEL_SET[BBOX_ID][9]/ 180.0 * _M_PI);
+
+            markerHead.pose.position.x = marker.pose.position.x + (0.5 * marker.scale.x + 0.5) * cosyaw;
+            markerHead.pose.position.y = marker.pose.position.y + (0.5 * marker.scale.x + 0.5) * sinyaw;
+        }
+        markerHead.pose.position.z = marker.pose.position.z;
+    }
+
+//    float alpha = marker.pose.position.y > 0 ? atan2f(marker.pose.position.x, marker.pose.position.y) : -atan2f(marker.pose.position.x, marker.pose.position.y);
+    marker.action = visualization_msgs::Marker::ADD;
+    bbox_marker_pub.publish(marker);
+
+    markerHead.pose.orientation.x = marker.pose.orientation.x;
+    markerHead.pose.orientation.y = marker.pose.orientation.y;
+    markerHead.pose.orientation.z = marker.pose.orientation.z;
+    markerHead.pose.orientation.w = marker.pose.orientation.w;
+
+    markerHead.action = visualization_msgs::Marker::ADD;
+    bbox_head_marker_pub.publish(markerHead);
+
+    BBOX_SET[BBOX_ID][10] = 1000;
+
+    Marker markerID;
+
+    markerID.header.frame_id = m_frame_id;
+
+    markerID.id = BBOX_ID;
+
+    markerID.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+
+    markerID.color.r = 255.0;
+    markerID.color.g = 255.0;
+    markerID.color.b = 255.0;
+    markerID.color.a = 0.5;
+
+    markerID.action = visualization_msgs::Marker::ADD;
+    markerID.scale.x = 1;
+    markerID.scale.y = 1;
+    markerID.scale.z = 2;
+
+    std::ostringstream str;
+    str<<BBOX_ID+1;
+    markerID.text=str.str();
+
+    markerID.pose.position.x = marker.pose.position.x;
+    markerID.pose.position.y = marker.pose.position.y;
+    markerID.pose.position.z = marker.pose.position.z;
+    bbox_id_marker_pub.publish(markerID);
+}
+
+void RVizCloudAnnotation::generateBboxFromTxt() {
+    float shape[6] = {0, 0, 0, 0, 0, 0};
+    shape[0] = BBOX_LABEL_SET[BBOX_ID][5]-BBOX_LABEL_SET[BBOX_ID][2]*0.5;
+    shape[1] = BBOX_LABEL_SET[BBOX_ID][5]+BBOX_LABEL_SET[BBOX_ID][2]*0.5;
+    shape[2] = BBOX_LABEL_SET[BBOX_ID][6]-BBOX_LABEL_SET[BBOX_ID][3]*0.5;
+    shape[3] = BBOX_LABEL_SET[BBOX_ID][6]+BBOX_LABEL_SET[BBOX_ID][3]*0.5;
+    shape[4] = BBOX_LABEL_SET[BBOX_ID][7]-BBOX_LABEL_SET[BBOX_ID][4]*0.5;
+    shape[5] = BBOX_LABEL_SET[BBOX_ID][7]+BBOX_LABEL_SET[BBOX_ID][4]*0.5;
+
+    shape[0] += m_box_bias[BBOX_ID][2] - m_box_bias_last[BBOX_ID][2];
+    shape[1] += m_box_bias[BBOX_ID][3] - m_box_bias_last[BBOX_ID][3];
+    shape[2] += m_box_bias[BBOX_ID][0] - m_box_bias_last[BBOX_ID][0];
+    shape[3] += m_box_bias[BBOX_ID][1] - m_box_bias_last[BBOX_ID][1];
+    shape[4] += m_box_bias[BBOX_ID][4] - m_box_bias_last[BBOX_ID][4];
+    shape[5] += m_box_bias[BBOX_ID][5] - m_box_bias_last[BBOX_ID][5];
+
+    for(int i=0;i<6;i++)
+    {
+//        shape[i] += m_box_bias[BBOX_ID][i] - m_box_bias_last[BBOX_ID][i];
+        m_box_bias_last[BBOX_ID][i] = m_box_bias[BBOX_ID][i];
+    }
+
+
+    //generate markers
+    const pcl::RGB color = pcl::GlasbeyLUT::at((m_current_label - 1) % 256);
+    Marker marker;
+
+    marker.header.frame_id = m_frame_id;
+
+    marker.id = BBOX_ID;
+
+    marker.type = visualization_msgs::Marker::CUBE;
+
+    marker.color.r = float(color.r) / 255.0;
+    marker.color.g = float(color.g) / 255.0;
+    marker.color.b = float(color.b) / 255.0;
+    marker.color.a = 0.5;
+
+    Marker markerHead;
+    markerHead.header.frame_id = m_frame_id;
+    markerHead.id = BBOX_ID;
+    markerHead.type = visualization_msgs::Marker::CUBE;
+
+    markerHead.color.r = float(color.r) / 255.0;
+    markerHead.color.g = float(color.g) / 255.0;
+    markerHead.color.b = float(color.b) / 255.0;
+    markerHead.color.a = 1;
+
+    markerHead.scale.x = 1;
+    markerHead.scale.y = 0.1;
+    markerHead.scale.z = 0.1;
+
+    if (1)
+    {
+        marker.pose.position.x = 0.5 * (shape[0] + shape[1]);
+        marker.pose.position.y = 0.5 * (shape[2] + shape[3]);
+        marker.pose.position.z = 0.5 * (shape[4] + shape[5]);
+
+        marker.pose.orientation.x = 0.0;
+        marker.pose.orientation.y = 0.0;
+        marker.pose.orientation.z = 0.0;
+        marker.pose.orientation.w = 1.0;
+
+
+        marker.scale.x = fabs(shape[0] - shape[1]);
+        marker.scale.y = fabs(shape[2] - shape[3]);
+        marker.scale.z = fabs(shape[4] - shape[5]);
+
+        if (BBOX_YAW_ANGLE == 0)
+        {
+            markerHead.pose.position.x = marker.pose.position.x + (0.5 * marker.scale.x + 0.5);
+            markerHead.pose.position.y = marker.pose.position.y;
+        }
+        else if (BBOX_YAW_ANGLE == 90)
+        {
+            markerHead.pose.position.x = marker.pose.position.x;
+            markerHead.pose.position.y = marker.pose.position.y + (0.5 * marker.scale.y + 0.5);
+            markerHead.scale.x = 0.1;
+            markerHead.scale.y = 1;
+        }
+        else if (BBOX_YAW_ANGLE == -90)
+        {
+            markerHead.pose.position.x = marker.pose.position.x;
+            markerHead.pose.position.y = marker.pose.position.y - (0.5 * marker.scale.y + 0.5);
+            markerHead.scale.x = 0.1;
+            markerHead.scale.y = 1;
+        }
+        else if (BBOX_YAW_ANGLE == 180 || BBOX_YAW_ANGLE == -180)
+        {
+            markerHead.pose.position.x = marker.pose.position.x - (0.5 * marker.scale.x + 0.5);
+            markerHead.pose.position.y = marker.pose.position.y;
+        }
+        else
+        {
+            marker.pose.orientation.x = 0.0;
+            marker.pose.orientation.y = 0.0;
+            marker.pose.orientation.z = sin(BBOX_YAW_ANGLE/ 180.0 * _M_PI * 0.5);
+            marker.pose.orientation.w = cos(BBOX_YAW_ANGLE/ 180.0 * _M_PI* 0.5);
+
+            float sinyaw = sinf(BBOX_YAW_ANGLE/ 180.0 * _M_PI);
+            float cosyaw = cosf(BBOX_YAW_ANGLE/ 180.0 * _M_PI);
+
+            markerHead.pose.position.x = marker.pose.position.x + (0.5 * marker.scale.x + 0.5) * cosyaw;
+            markerHead.pose.position.y = marker.pose.position.y + (0.5 * marker.scale.x + 0.5) * sinyaw;
+        }
+
+        markerHead.pose.position.z = marker.pose.position.z;
+    }
+
+    float alpha = marker.pose.position.y > 0 ? atan2f(marker.pose.position.x, marker.pose.position.y) : -atan2f(marker.pose.position.x, marker.pose.position.y);
+    marker.action = visualization_msgs::Marker::ADD;
+    bbox_marker_pub.publish(marker);
+
+    markerHead.pose.orientation.x = marker.pose.orientation.x;
+    markerHead.pose.orientation.y = marker.pose.orientation.y;
+    markerHead.pose.orientation.z = marker.pose.orientation.z;
+    markerHead.pose.orientation.w = marker.pose.orientation.w;
+
+    markerHead.action = visualization_msgs::Marker::ADD;
+    bbox_head_marker_pub.publish(markerHead);
+
+    BBOX_LABEL_SET[BBOX_ID][0] = 0;
+    BBOX_LABEL_SET[BBOX_ID][1] = 0;
+    BBOX_LABEL_SET[BBOX_ID][2] = marker.scale.x;
+    BBOX_LABEL_SET[BBOX_ID][3] = marker.scale.y;
+    BBOX_LABEL_SET[BBOX_ID][4] = marker.scale.z;
+    BBOX_LABEL_SET[BBOX_ID][5] = marker.pose.position.x;
+    BBOX_LABEL_SET[BBOX_ID][6] = marker.pose.position.y;
+    BBOX_LABEL_SET[BBOX_ID][7] = marker.pose.position.z;
+    BBOX_LABEL_SET[BBOX_ID][8] = alpha;
+    BBOX_LABEL_SET[BBOX_ID][9] = BBOX_YAW_ANGLE;
+    BBOX_SET[BBOX_ID][10] = 1000;
+
+
+    Marker markerID;
+
+    markerID.header.frame_id = m_frame_id;
+
+    markerID.id = BBOX_ID;
+
+    markerID.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+
+    markerID.color.r = 255.0;
+    markerID.color.g = 255.0;
+    markerID.color.b = 255.0;
+    markerID.color.a = 0.5;
+
+    markerID.action = visualization_msgs::Marker::ADD;
+    markerID.scale.x = 1;
+    markerID.scale.y = 1;
+    markerID.scale.z = 2;
+
+    std::ostringstream str;
+    str<<BBOX_ID+1;
+    markerID.text=str.str();
+
+    markerID.pose.position.x = marker.pose.position.x;
+    markerID.pose.position.y = marker.pose.position.y;
+    markerID.pose.position.z = marker.pose.position.z;
+    bbox_id_marker_pub.publish(markerID);
+}
 
 //生成 BBOX信息
 void RVizCloudAnnotation::generateBbox(const PointXYZRGBNormalCloud &cloud, bool if_tilt)
@@ -2628,6 +2981,33 @@ void RVizCloudAnnotation::BboxToMarker(const float shape[], const int id, bool i
   markerHead.pose.orientation.w = marker.pose.orientation.w;
 
   bbox_head_marker_pub.publish(markerHead);
+
+    Marker markerID;
+
+    markerID.header.frame_id = m_frame_id;
+
+    markerID.id = id;
+
+    markerID.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+
+    markerID.color.r = 255.0;
+    markerID.color.g = 255.0;
+    markerID.color.b = 255.0;
+    markerID.color.a = 0.5;
+
+    markerID.action = visualization_msgs::Marker::ADD;
+    markerID.scale.x = 1;
+    markerID.scale.y = 1;
+    markerID.scale.z = 2;
+
+    std::ostringstream str;
+    str<<id+1;
+    markerID.text=str.str();
+
+    markerID.pose.position.x = marker.pose.position.x;
+    markerID.pose.position.y = marker.pose.position.y;
+    markerID.pose.position.z = marker.pose.position.z;
+    bbox_id_marker_pub.publish(markerID);
 }
 
 //删除BBOX Marker
@@ -2662,6 +3042,18 @@ void RVizCloudAnnotation::EmptyBboxToMarker(const int id)
   bbox_marker_pub.publish(marker);
 
   bbox_head_marker_pub.publish(markerHead);
+
+  Marker markerID;
+  markerID.header.frame_id = m_frame_id;
+
+  markerID.id = id;
+
+  markerID.action = visualization_msgs::Marker::DELETE;
+  markerID.scale.x = 0;
+  markerID.scale.y = 0;
+  markerID.scale.z = 0;
+
+  bbox_id_marker_pub.publish(markerID);
 
   ROS_INFO("rviz_cloud_annotation: Delete BBOX now: %i", BBOX_ID);
 }
