@@ -457,6 +457,10 @@ void RVizCloudAnnotation::InitNewCloud(ros::NodeHandle &nh)
       BBOX_LABEL_SET[BBOX_ID][5]>>BBOX_LABEL_SET[BBOX_ID][6]>>BBOX_LABEL_SET[BBOX_ID][7]>>
       BBOX_LABEL_SET[BBOX_ID][8]>>BBOX_LABEL_SET[BBOX_ID][9];
       BBOX_SET[BBOX_ID][10] = 1000;
+
+      std::unordered_map<std::string, int> nameMap{{"Car", 1}, {"Cart", 6}, {"Pedestrian", 11}, {"Cyclist", 16}};
+      BBOX_LABEL_SET[BBOX_ID][0] = nameMap[label];
+
       //generate markers
       generateBboxFromTxtInit();
       sleep(0.1);
@@ -821,8 +825,9 @@ void RVizCloudAnnotation::onClear(const std_msgs::UInt32 &label_msg)
   const uint64 old_max_label = m_annotation->GetNextLabel();
 
   const uint64 clear_label = label_msg.data;
-  if (clear_label >= old_max_label)
-    return;
+
+//  if (clear_label >= old_max_label)
+//    return;
 
   if (clear_label != 0)
   {
@@ -2661,7 +2666,7 @@ void RVizCloudAnnotation::generateBboxFromTxt() {
     markerHead.action = visualization_msgs::Marker::ADD;
     bbox_head_marker_pub.publish(markerHead);
 
-    BBOX_LABEL_SET[BBOX_ID][0] = 0;
+//    BBOX_LABEL_SET[BBOX_ID][0] = 0;
     BBOX_LABEL_SET[BBOX_ID][1] = 0;
     BBOX_LABEL_SET[BBOX_ID][2] = marker.scale.x;
     BBOX_LABEL_SET[BBOX_ID][3] = marker.scale.y;

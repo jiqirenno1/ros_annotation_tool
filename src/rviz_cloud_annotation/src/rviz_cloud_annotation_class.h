@@ -1,6 +1,7 @@
 #ifndef RVIZ_CLOUD_ANNOTATION_CLASS_H
 #define RVIZ_CLOUD_ANNOTATION_CLASS_H
 
+#include <unordered_map>
 #include <rviz_cloud_annotation/RectangleSelectionViewport.h>
 #include <rviz_cloud_annotation/UndoRedoState.h>
 #include <visualization_msgs/MarkerArray.h>
